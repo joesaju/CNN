@@ -479,7 +479,7 @@ elif mode == "Webcam":
     st.info("Using local webcam (index 0). Make sure your browser/OS grants camera access if required.")
     start = st.button("Start Webcam")
     if start:
-        cap = cv2.VideoCapture(1)
+        cap = cv2.VideoCapture(0)
         if not cap.isOpened():
             st.error("Cannot open webcam (index 0). Try different index or use DroidCam stream.")
         else:
