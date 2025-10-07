@@ -14,7 +14,6 @@ Save this file as app.py and run:
 """
 
 import streamlit as st
-import cv2
 import numpy as np
 from PIL import Image
 import tempfile
