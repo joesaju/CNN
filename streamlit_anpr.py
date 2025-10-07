@@ -62,7 +62,7 @@ def load_yolo(path=None):
         return None
     try:
         from ultralytics import YOLO
-        model = YOLO(r"D:\python\New folder\openCV\CNN\best.pt")
+        model = YOLO(r"D:\python\New folder\openCV\CNN\yolo11n.pt")
         YOLO_AVAILABLE = True
         return model
     except Exception as e:
