@@ -390,7 +390,7 @@ def process_video_stream(cap, source_label="webcam"):
     detection = {
         'plate': detected_plate,
         'confidence': confidence_score,
-        'timestamp': datetime.datetime.now()  # Add timestamp
+        'timestamp': datetime.now()  # Add timestamp
     }
 
     st.session_state['detections'].append(detection)
