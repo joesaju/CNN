@@ -197,6 +197,7 @@ def ocr_easyocr(reader, plate_image_bgr):
     avg_conf = float(np.mean(confs)) if confs else 0.0
     return text, avg_conf
 
+
 def ocr_pytesseract(plate_image_bgr):
     """
     Use pytesseract to OCR plate region. Returns (text, confidence). Note: pytesseract confidence parsing is hacky.
