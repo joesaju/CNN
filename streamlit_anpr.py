@@ -376,38 +376,86 @@ def process_image_file(image_bytes, source_label="upload"):
     return
 
 # Process video frames from capture (webcam, ip cam, or uploaded video)
-def process_video_stream(cap, source_label="webcam"):
-    # Ensure session_state['detections'] exists
-    if 'detections' not in st.session_state:
-        st.session_state['detections'] = []
+def process_video_stream(cap, max_frames=10000, source_label="stream"):
+    stframe = st.empty()
+    info_area = st.empty()
+    # Show controls
+    stop_button = st.button("Stop stream")
+    frame_skip = st.sidebar.number_input("Process every N frames (larger -> faster)", min_value=1, max_value=30, value=3, step=1)
+    processed_frames = 0
+    last_plate = None
+    # Loop
+    while cap.isOpened():
+        if stop_button:
+            break
+        ret, frame = cap.read()
+        if not ret:
+            break
+        processed_frames += 1
+        display_frame = frame.copy()
+        h,w = frame.shape[:2]
+        # Process every Nth frame
+        if processed_frames % frame_skip == 0:
+            detected_plate_crop = None
+            detected_bbox = None
+            detection_conf = 0.0
+            # YOLO?
+            if yolo_model:
+                try:
+                    dets = yolo_plate_detector(yolo_model, frame, conf_thres=0.25)
+                    if dets:
+                        dets = sorted(dets, key=lambda x: x[1], reverse=True)
+                        bbox, conf, cls = dets[0]
+                        x1,y1,x2,y2 = bbox
+                        x1=max(0,x1); y1=max(0,y1); x2=min(w-1,x2); y2=min(h-1,y2)
+                        detected_plate_crop = frame[y1:y2, x1:x2].copy()
+                        detected_bbox = (x1,y1,x2,y2)
+                        detection_conf = conf
+                except Exception as e:
+                    st.warning(f"YOLO inference error: {e}")
+            # Fallback
+            if detected_plate_crop is None:
+                plate, bbox = opencv_plate_detector(frame)
+                if plate is not None:
+                    detected_plate_crop = plate
+                    detected_bbox = bbox
+                    detection_conf = 0.45
 
-    # Example: capturing a new detection (replace with your detection logic)
-    # detected_plate and confidence_score should come from your ANPR detection code
-    # For demonstration, we'll simulate a detection:
-    detected_plate = "TN01AB1234"
-    confidence_score = 0.95
+            if detected_plate_crop is not None:
+                # OCR
+                if ocr_choice.startswith("EasyOCR") and reader is not None:
+                    text, ocr_conf = ocr_easyocr(reader, detected_plate_crop)
+                elif PYTESSERACT_AVAILABLE:
+                    text, ocr_conf = ocr_pytesseract(detected_plate_crop)
+                else:
+                    text, ocr_conf = "", 0.0
+                normalized = normalize_text(text)
+                if custom_regex:
+                    valid = bool(re.match(custom_regex, normalized))
+                    matched = custom_regex if valid else None
+                else:
+                    valid, matched = validate_plate_text(normalized, country="IN")
+                # Log and annotate if new or repeated with some cooldown
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                if normalized and (normalized != last_plate):
+                    last_plate = normalized
+                    log_detection(normalized, ocr_conf if ocr_conf else detection_conf, detected_bbox, source=source_label)
+                # Draw bbox on display frame
+                if detected_bbox:
+                    draw_bbox(display_frame, detected_bbox, label=f"{normalized} {round(ocr_conf,3)}")
+                    # Show plate crop in small overlay
+                    ph, pw = detected_plate_crop.shape[:2]
+                    # resize small preview
+                    preview = cv2.resize(detected_plate_crop, (int(pw*0.6), int(ph*0.6)))
+                    # place preview at top-left
+                    h_p, w_p = preview.shape[:2]
+                    display_frame[5:5+h_p, 5:5+w_p] = preview
 
-    detection = {
-        'plate': detected_plate,
-        'confidence': confidence_score,
-        'timestamp': datetime.now()  # Add timestamp
-    }
-
-    st.session_state['detections'].append(detection)
-
-    # Create DataFrame safely
-    if st.session_state['detections']:
-        df = pd.DataFrame(st.session_state['detections'])
-        if 'timestamp' in df.columns:
-            df = df.sort_values("timestamp", ascending=False).head(25)
-        else:
-            # Fallback if timestamp is missing
-            df = df.head(25)
-    else:
-        df = pd.DataFrame()  # Empty DataFrame if no detections
-
-    # For Streamlit display
-    st.dataframe(df)
+        # Show frame in Streamlit
+        stframe.image(cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB), channels="RGB", width='stretch')
+        # show info area
+        df = pd.DataFrame(st.session_state['detections']).sort_values("timestamp", ascending=False).head(25)
+        info_area.dataframe(df)
        
 
 # UI handlers for each mode
